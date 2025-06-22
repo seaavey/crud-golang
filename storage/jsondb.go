@@ -1,11 +1,10 @@
 package storage
 
 import (
+	"crud/model"
 	"encoding/json"
 	"io/ioutil"
 	"os"
-
-	"crud/model"
 )
 
 // ini nama file yang bakal jadi "database"-nya, simpen data buku ke sini

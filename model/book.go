@@ -6,7 +6,8 @@ package model
 // Author itu nama penulis bukunya
 // tag `json:"..."` itu biar waktu encode/decode ke JSON pakai nama itu
 type Book struct {
-	ID     string `json:"id"`     // ID buku, bentuknya string
-	Title  string `json:"title"`  // Judul buku
-	Author string `json:"author"` // Nama penulis
+	ID     string `json:"id"`
+	Title  string `json:"title" validate:"required"`
+	Author string `json:"author" validate:"required"`
 }
+

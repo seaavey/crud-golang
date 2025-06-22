@@ -1,10 +1,4 @@
-// ini buat menakses file ini "handler/nama_file"
 package handler
-
-// import module-module do butuhkan kaya json, fmt, http, mux dari gorilla
-// dan saya juga import file lain seperti dari folder model dan storage
-// nah folder model itu buat tau struktur data Book itu kek mana
-// sedangkan storage itu buat akses dan ubah data ke "database" (bisa file, dsb)
 
 import (
 	"encoding/json"
@@ -17,16 +11,29 @@ import (
 	"crud/storage"
 )
 
-// ini fungsi buat nambahin buku baru
-// dia bakal baca body request dari client (format JSON)
-// terus nyari ID paling gede dari data yang udah ada, trus tambahin 1
-// abis itu datanya disimpan, dan ngirim balik data buku yang baru
+// CreateBook menambahkan buku baru dari request JSON
 func CreateBook(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	var book model.Book
-	json.NewDecoder(r.Body).Decode(&book)
+	if err := json.NewDecoder(r.Body).Decode(&book); err != nil {
+		http.Error(w, "Request tidak valid", http.StatusBadRequest)
+		return
+	}
 
-	books, _ := storage.LoadBooks()
+	// Validasi sederhana
+	if book.Title == "" || book.Author == "" {
+		http.Error(w, "Judul dan penulis wajib diisi", http.StatusBadRequest)
+		return
+	}
 
+	books, err := storage.LoadBooks()
+	if err != nil {
+		http.Error(w, "Gagal memuat data buku", http.StatusInternalServerError)
+		return
+	}
+
+	// Cari ID terbesar
 	maxID := 0
 	for _, b := range books {
 		var id int
@@ -38,25 +45,38 @@ func CreateBook(w http.ResponseWriter, r *http.Request) {
 	book.ID = fmt.Sprintf("%d", maxID+1)
 
 	books = append(books, book)
-	storage.SaveBooks(books)
+	if err := storage.SaveBooks(books); err != nil {
+		http.Error(w, "Gagal menyimpan data buku", http.StatusInternalServerError)
+		return
+	}
 
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(book)
 }
 
-// ini fungsi buat ngambil semua data buku
-// dia langsung ngeload dari storage dan ngirim dalam bentuk JSON
+// GetBooks mengembalikan semua data buku
 func GetBooks(w http.ResponseWriter, r *http.Request) {
-	books, _ := storage.LoadBooks()
+	w.Header().Set("Content-Type", "application/json")
+
+	books, err := storage.LoadBooks()
+	if err != nil {
+		http.Error(w, "Gagal memuat data buku", http.StatusInternalServerError)
+		return
+	}
+
 	json.NewEncoder(w).Encode(books)
 }
 
-// ini fungsi buat ngambil 1 buku aja berdasarkan ID
-// jadi ambil ID-nya dari URL, trus cek datanya
-// kalo ada, kirim datanya. kalo ga ada, kirim 404
+// GetBook mengembalikan satu buku berdasarkan ID
 func GetBook(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	id := mux.Vars(r)["id"]
-	books, _ := storage.LoadBooks()
+	books, err := storage.LoadBooks()
+	if err != nil {
+		http.Error(w, "Gagal memuat data buku", http.StatusInternalServerError)
+		return
+	}
 
 	for _, book := range books {
 		if book.ID == id {
@@ -64,43 +84,79 @@ func GetBook(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
 	http.NotFound(w, r)
 }
 
-// ini buat update data buku berdasarkan ID
-// ambil ID dari URL, terus baca data baru dari body request
-// cari ID yang cocok, kalo ketemu update datanya dan simpan
-// kalo ga ketemu, kirim 404
+// UpdateBook memperbarui data buku berdasarkan ID
 func UpdateBook(w http.ResponseWriter, r *http.Request) {
-	id := mux.Vars(r)["id"]
-	var updated model.Book
-	json.NewDecoder(r.Body).Decode(&updated)
+	w.Header().Set("Content-Type", "application/json")
 
-	books, _ := storage.LoadBooks()
+	id := mux.Vars(r)["id"]
+
+	var updated model.Book
+	if err := json.NewDecoder(r.Body).Decode(&updated); err != nil {
+		http.Error(w, "Request tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	if updated.Title == "" || updated.Author == "" {
+		http.Error(w, "Judul dan penulis wajib diisi", http.StatusBadRequest)
+		return
+	}
+
+	books, err := storage.LoadBooks()
+	if err != nil {
+		http.Error(w, "Gagal memuat data buku", http.StatusInternalServerError)
+		return
+	}
+
 	for i, book := range books {
 		if book.ID == id {
+			updated.ID = id // pastikan ID tetap sama
 			books[i] = updated
-			storage.SaveBooks(books)
+			if err := storage.SaveBooks(books); err != nil {
+				http.Error(w, "Gagal menyimpan data buku", http.StatusInternalServerError)
+				return
+			}
 			json.NewEncoder(w).Encode(updated)
 			return
 		}
 	}
+
 	http.NotFound(w, r)
 }
 
-// ini buat hapus data buku berdasarkan ID
-// ambil ID dari URL, terus filter data yang bukan ID itu
-// simpan lagi datanya, trus kirim status sukses tanpa isi (204)
+// DeleteBook menghapus data buku berdasarkan ID
 func DeleteBook(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	id := mux.Vars(r)["id"]
-	books, _ := storage.LoadBooks()
+	books, err := storage.LoadBooks()
+	if err != nil {
+		http.Error(w, "Gagal memuat data buku", http.StatusInternalServerError)
+		return
+	}
 
 	newBooks := []model.Book{}
+	found := false
 	for _, book := range books {
 		if book.ID != id {
 			newBooks = append(newBooks, book)
+		} else {
+			found = true
 		}
 	}
-	storage.SaveBooks(newBooks)
+
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+
+	if err := storage.SaveBooks(newBooks); err != nil {
+		http.Error(w, "Gagal menyimpan data buku", http.StatusInternalServerError)
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
